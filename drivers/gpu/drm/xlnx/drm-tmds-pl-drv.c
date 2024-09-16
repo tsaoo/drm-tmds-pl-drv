@@ -12,6 +12,7 @@ struct drm_tmds_pl {
     struct device *dev;
     struct i2c_adapter *i2c_adapter;
     bool i2c_present;
+    bool pref_present;
     u32 fmax;
     u32 hmax;
     u32 vmax;
@@ -101,17 +102,17 @@ static void drm_tmds_pl_atomic_mode_set(struct drm_encoder *encoder,
                                         struct drm_crtc_state *crtc_state,
                                         struct drm_connector_state *connector_state)
 {
-    DRM_INFO("DIGILENT SET MODE");
+    DRM_INFO("TMDS DRIVER CALLBACK: drm_tmds_pl_atomic_mode_set");
 }
 
 static void drm_tmds_pl_enable(struct drm_encoder *encoder)
 {
-    DRM_INFO("DIGILENT SET MODE");
+    DRM_INFO("TMDS DRIVER CALLBACK: drm_tmds_pl_enable");
 }
 
 static void drm_tmds_pl_disable(struct drm_encoder *encoder)
 {
-    DRM_INFO("DIGILENT SET MODE");
+    DRM_INFO("TMDS DRIVER CALLBACK: drm_tmds_pl_disable");
 }
 
 /**
@@ -151,10 +152,10 @@ static int drm_tmds_pl_get_modes(struct drm_connector *connector)
     int num_modes = 0;
 
     // Try read EDID from I2C bus
-    if (tmds->i2c_present) {
+    if (tmds->i2c_present && !tmds->pref_present) {
         edid = drm_get_edid(connector, tmds->i2c_adapter);
 
-        drm_mode_connector_update_edid_property(connector, edid);
+        drm_connector_update_edid_property(connector, edid);
         if (edid) {
             num_modes = drm_add_edid_modes(connector, edid);        // This fills the connector->probed_mode
             kfree(edid);
@@ -218,7 +219,7 @@ static int _create_connector(struct drm_encoder *encoder)
         dev_err(tmds->dev, "Failed to register the connector (ret=%d)\n", ret);
         return ret;
     }
-    ret = drm_mode_connector_attach_encoder(connector, encoder);
+    ret = drm_connector_attach_encoder(connector, encoder);
     if (ret) {
         dev_err(tmds->dev, "Failed to attach encoder to connector (ret=%d)\n", ret);
         return ret;
@@ -259,39 +260,55 @@ static int drm_tmds_pl_probe(struct platform_device *pdev)
     ret = of_property_read_u32(pdev->dev.of_node, "setting,fmax", &tmds->fmax);
     if (ret < 0) {
         tmds->fmax = DEFAULT_SETTING_MAX_FREQ;
-        dev_info(tmds->dev, "No max frequency in DT, using default %dKHz\n", DEFAULT_SETTING_MAX_FREQ);
-    }
+        dev_info(tmds->dev, "No max frequency in DT, using default %dkHz\n", DEFAULT_SETTING_MAX_FREQ);
+    }else
+        dev_info(tmds->dev, "Using max frequency in DT: %dkHz", tmds->fmax);
 
     ret = of_property_read_u32(pdev->dev.of_node, "setting,hmax", &tmds->hmax);
     if (ret < 0) {
         tmds->hmax = DEFAULT_SETTING_MAX_H;
         dev_info(tmds->dev, "No max horizontal width in DT, using default %d\n", DEFAULT_SETTING_MAX_H);
-    }
+    }else
+        dev_info(tmds->dev, "Using max horizontal width in DT: %d\n", tmds->hmax);
 
     ret = of_property_read_u32(pdev->dev.of_node, "setting,vmax", &tmds->vmax);
     if (ret < 0) {
         tmds->vmax = DEFAULT_SETTING_MAX_V;
         dev_info(tmds->dev, "No max vertical height in DT, using default %d\n", DEFAULT_SETTING_MAX_V);
-    }
+    }else
+        dev_info(tmds->dev, "Using max verticle height in DT: %d\n", tmds->vmax);
 
+    // Priority: preference in DT > EDID > default
+    // CAUTION: hpref & vpref should come in pair in DT. Default value would be use for the omitted one.
+    tmds->pref_present = false;
     ret = of_property_read_u32(pdev->dev.of_node, "setting,hpref", &tmds->hpref);
     if (ret < 0) {
-        tmds->hpref = DEFAULT_SETTING_PREF_H;
+        tmds->hpref = DEFAULT_SETTING_PREF_H;       // In case that I2C is available, this would be ignored
         if (!tmds->i2c_present)
             dev_info(tmds->dev, "No pref horizontal width in DT, using default %d\n", DEFAULT_SETTING_PREF_H);
+        else
+            dev_info(tmds->dev, "No pref horizontal width in DT, load from EDID later %d\n", DEFAULT_SETTING_PREF_H);
+    }else{
+        tmds->pref_present = true;
+        dev_info(tmds->dev, "Using pref horizontal width in DT: %d\n", tmds->hpref);
     }
 
     ret = of_property_read_u32(pdev->dev.of_node, "setting,vpref", &tmds->vpref);
     if (ret < 0) {
-        tmds->vpref = DEFAULT_SETTING_PREF_V;
+        tmds->vpref = DEFAULT_SETTING_PREF_V;       // In case that I2C is available, this would be ignored
         if (!tmds->i2c_present)
             dev_info(tmds->dev, "No pref vertical height in DT, using default %d\n", DEFAULT_SETTING_PREF_V);
+        else
+            dev_info(tmds->dev, "No pref vertical height in DT, load from EDID later %d\n", DEFAULT_SETTING_PREF_H);
+    }else{
+        tmds->pref_present = true;
+        dev_info(tmds->dev, "Using pref vertical height in DT: %d\n", tmds->vpref);
     }
 
     // Add the encoder+connector as a component to the framework
     ret = component_add(tmds->dev, &drm_tmds_pl_component_ops);
 
-    dev_info(tmds->dev, "drm_tmds_pl_drv probed %d\n", ret);
+    dev_info(tmds->dev, "drm_tmds_pl_drv for v5.4 probed ! ret = %d\n", ret);
     return ret;
 }
 

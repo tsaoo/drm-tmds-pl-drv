@@ -1,7 +1,7 @@
 repo=$(pwd)
 
 
-if [-d "${1}/project-spec/meta-user/recipes-modules/drm-tmds-pl-drv"];
+if [ -d "${1}/project-spec/meta-user/recipes-modules/drm-tmds-pl-drv" ];
 then
     echo "drm-tmds-pl-drv already installed, updating files only...";
     cp  ${repo}/drivers/gpu/drm/xlnx/drm-tmds-pl-drv.c \
@@ -23,7 +23,7 @@ else
         >> ${1}/project-spec/meta-user/recipes-modules/drm-tmds-pl-drv/files/Makefile
 fi
 
-if [-d "${1}/project-spec/meta-user/recipes-modules/clk-dglnt-dynclk"]; then
+if [ -d "${1}/project-spec/meta-user/recipes-modules/clk-dglnt-dynclk" ]; then
     echo "Digilent Dynamic Clock module installed, skipping...";
 else
     echo "Installing Digilent Dynamic Clock module...";
